@@ -12,6 +12,7 @@ import pandas as pd
 import numpy as np
 import Thermodyn as tm
 import itertools
+import sys
 
 def parse_sounding(file_sound):
 
@@ -118,10 +119,18 @@ def parse_surface(file_met,index_field,name_field,locelevation):
 
 	return meteo
 
-def parse_windprof(windprof_file):
+def parse_windprof(windprof_file,mode):
 
-	print 'wp'
+	if mode == 'fine':
+		raw = pd.read_table(windprof_file,skiprows=10,skipfooter=50,engine='python',delimiter='\s*')
+	elif mode == 'coarse':
+		raw = pd.read_table(windprof_file,skiprows=59,skipfooter=1,engine='python',delimiter='\s*')
 
+	''' replace nan values '''
+	nan_value = 999999
+	wp = raw.applymap(lambda x: np.nan if x == nan_value else x)	
+
+	return wp
 
 """ 
 	supporting functions
