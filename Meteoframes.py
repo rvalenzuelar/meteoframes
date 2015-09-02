@@ -126,16 +126,24 @@ def parse_windprof(windprof_file,mode):
 	elif mode == 'coarse':
 		raw = pd.read_table(windprof_file,skiprows=59,skipfooter=1,engine='python',delimiter='\s*')
 
+	''' get timestamp '''
+	raw_timestamp = pd.read_table(windprof_file,skiprows=4,skipfooter=94,engine='python')
+	raw_timestamp = raw_timestamp.columns
+	date_fmt = '%y %m %d %H %M %S'
+	timestamp = datetime.strptime(raw_timestamp[0][:-1].strip(),date_fmt)
+
 	''' replace nan values '''
 	nan_value = 999999
 	wp = raw.applymap(lambda x: np.nan if x == nan_value else x)	
+	wp.timestamp = timestamp
 
 	return wp
+
+
 
 """ 
 	supporting functions
 """
-
 def get_var_names(file_sound):
 
 	names=[]
