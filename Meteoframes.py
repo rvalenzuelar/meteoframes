@@ -13,6 +13,7 @@ import numpy as np
 import Thermodyn as tm
 import itertools
 import sys
+import os
 
 def parse_sounding(file_sound):
 
@@ -160,14 +161,18 @@ def parse_buoy(buoy_file,start=None,end=None):
 
 	return raw
 
-def parse_nws_surface(nws_surf_file):
+def parse_mesowest_excel(mesowest_file):
 
-	raw = pd.read_excel(nws_surf_file,skip_footer=3)
-	raw['Datetime'] = pd.to_datetime(raw['ID = KAPC'],format='%m-%d-%Y %H:%M GMT')
+	""" URL: http://mesowest.utah.edu/
+	"""
+	filename=os.path.basename(mesowest_file)
+	station_id = 'ID = ' + filename[:4]
+	raw = pd.read_excel(mesowest_file,skip_footer=3)
+	raw['Datetime'] = pd.to_datetime(raw[station_id],format='%m-%d-%Y %H:%M GMT')
 	raw = raw.set_index(raw['Datetime'])
-	raw.drop('ID = KAPC', axis=1, inplace=True)
+	raw.drop(station_id, axis=1, inplace=True)
 	raw.drop('Datetime', axis=1, inplace=True)
-	
+
 	return raw
 
 """ 
