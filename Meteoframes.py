@@ -121,6 +121,9 @@ def parse_surface(file_met,index_field,name_field,locelevation):
 
 def parse_windprof(windprof_file,mode):
 
+	""" NOAA HHw files are one per hour 
+	"""
+
 	if mode == 'fine':
 		raw = pd.read_table(windprof_file,skiprows=10,skipfooter=50,engine='python',delimiter='\s*')
 	elif mode == 'coarse':
@@ -140,6 +143,32 @@ def parse_windprof(windprof_file,mode):
 	return wp
 
 
+def parse_buoy(buoy_file,start=None,end=None):
+
+	obs_per_hour = 6 # obs every 10 minutes
+	hrs_per_day = 24
+	ndays = 23
+	raw = pd.read_table(buoy_file, 
+							parse_dates=[[0,1,2,3,4]], 
+							engine='python', 
+							delimiter='\s*')
+	# raw = raw.rename(columns = {'YYYY_MM_DD_hh_mm':'timestamp'})
+	raw['Datetime'] = pd.to_datetime(raw['YYYY_MM_DD_hh_mm'],format='%Y %m %d %H %M')
+	raw = raw.set_index(raw['Datetime'])
+	raw.drop('YYYY_MM_DD_hh_mm', axis=1, inplace=True)
+	raw.drop('Datetime', axis=1, inplace=True)
+
+	return raw
+
+def parse_nws_surface(nws_surf_file):
+
+	raw = pd.read_excel(nws_surf_file,skip_footer=3)
+	raw['Datetime'] = pd.to_datetime(raw['ID = KAPC'],format='%m-%d-%Y %H:%M GMT')
+	raw = raw.set_index(raw['Datetime'])
+	raw.drop('ID = KAPC', axis=1, inplace=True)
+	raw.drop('Datetime', axis=1, inplace=True)
+	
+	return raw
 
 """ 
 	supporting functions
