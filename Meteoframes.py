@@ -159,7 +159,11 @@ def parse_buoy(buoy_file,start=None,end=None):
 	raw.drop('YYYY_MM_DD_hh_mm', axis=1, inplace=True)
 	raw.drop('Datetime', axis=1, inplace=True)
 
-	return raw
+	''' replace nan values '''
+	nan_value = 999
+	bu = raw.applymap(lambda x: np.nan if x == nan_value else x)	
+
+	return bu
 
 def parse_mesowest_excel(mesowest_file):
 
@@ -168,12 +172,29 @@ def parse_mesowest_excel(mesowest_file):
 	filename=os.path.basename(mesowest_file)
 	station_id = 'ID = ' + filename[:4]
 	raw = pd.read_excel(mesowest_file,skip_footer=3)
-	raw['Datetime'] = pd.to_datetime(raw[station_id],format='%m-%d-%Y %H:%M GMT')
-	raw = raw.set_index(raw['Datetime'])
-	raw.drop(station_id, axis=1, inplace=True)
-	raw.drop('Datetime', axis=1, inplace=True)
+	# raw['Datetime'] = pd.to_datetime(raw[station_id],format='%m-%d-%Y %H:%M GMT')
+	raw.index = pd.to_datetime(raw[station_id],format='%m-%d-%Y %H:%M GMT')
+	# meso = raw.set_index(raw['Datetime'])
+	# meso.drop(station_id, axis=1, inplace=True)
+	# meso.drop('Datetime', axis=1, inplace=True)
+	meso = raw.drop(station_id, axis=1)
+
+	return meso
+
+def parse_gps_iwv(gps_file):
+
+	raw = pd.read_table(gps_file, engine='python',delimiter='\s*')
+	# raw = pd.read_table(gps_file, parse_dates=[[1,2,3]],engine='python',delimiter='\s*')
+	raw.drop(raw.index[0],inplace=True) # unnecesary row with some units
+	year = raw['YEAR']
+	julian_day = raw['JJJ.dddd'].apply(lambda x: str(int(float(x))))
+	time = raw['HH:MM:SS']
+	timestamp = year+'-'+julian_day+'-'+time
+	raw.index = pd.to_datetime(timestamp,format='%Y-%j-%H:%M:%S')
+	raw.drop(['SITE','YEAR','JJJ.dddd','HH:MM:SS'],axis=1,inplace=True)	
 
 	return raw
+
 
 """ 
 	supporting functions
