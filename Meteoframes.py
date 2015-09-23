@@ -24,7 +24,7 @@ def parse_sounding(file_sound):
 	raw_sounding = pd.read_table(file_sound,skiprows=36,header=None)
 	raw_sounding.drop(19 , axis=1, inplace=True)	
 	raw_sounding.columns=col_names
-	sounding=raw_sounding[['Height','TE','TD','RH','u','v','P','MR']]
+	sounding=raw_sounding[['Height','TE','TD','RH','u','v','P','MR','DD']]
 	sounding.units={'Height':'m','TE':'K', 'TD':'K', 'RH':'%' ,'u':'m s-1','v':'m s-1','P':'hPa','MR':'g kg-1'}
 
 	''' replace nan values '''
