@@ -14,6 +14,10 @@ import Thermodyn as tm
 import itertools
 import sys
 import os
+from netCDF4 import Dataset
+from scipy.interpolate import UnivariateSpline
+from scipy.interpolate import Rbf
+
 
 def parse_sounding(file_sound):
 
@@ -194,6 +198,91 @@ def parse_gps_iwv(gps_file):
 	raw.drop(['SITE','YEAR','JJJ.dddd','HH:MM:SS'],axis=1,inplace=True)	
 
 	return raw
+
+def parse_acft_sounding(flight_level_file, req_ini, req_end, return_interp):
+
+	raw = pd.read_table(flight_level_file, engine='python',delimiter='\s*')
+
+	ini_raw = raw['TIME'].iloc[0]
+	end_raw = raw['TIME'].iloc[-1]
+	timestamp =  pd.date_range('2001-01-23 '+ini_raw, '2001-01-24 '+end_raw ,freq='s')
+	raw.index=timestamp
+	raw.drop(['TIME'],axis=1,inplace=True)
+
+	''' req_ini and req_end are python datatime variables '''	
+	st=raw.index.searchsorted(req_ini)
+	en=raw.index.searchsorted(req_end)
+	data = raw[['PRES_ALT','AIR_PRESS', 'AIR_TEMP','DEW_POINT','WIND_SPD','WIND_DIR','LAT','LON']].ix[st:en]
+
+	x=data['PRES_ALT'].values
+	xnew=np.linspace(min(x),max(x), x.size)
+	if x[0]>x[-1]:
+		descening = True
+		data = data.iloc[::-1]
+
+	if return_interp:
+		''' flight sounding might include constant height levels 
+		or descening trayectories, so we interpolate data to a
+		common vertical grid '''
+		data2=data.drop_duplicates(subset='PRES_ALT')
+		x2=data2['PRES_ALT'].values
+
+
+		''' interpolate each field '''
+		for n in ['AIR_PRESS', 'AIR_TEMP','DEW_POINT','WIND_SPD','WIND_DIR']:
+			y=data2[n].values
+			# spl = UnivariateSpline(x2,y,k=4)
+			# data[n]= spl(xnew)
+			rbf=Rbf(x2,y,smooth=1.0)
+			ynew = rbf(xnew)
+			data[n] = ynew
+
+		'''' update values '''
+		data['PRES_ALT'] = xnew
+
+		''' set index '''
+		data = data.set_index('PRES_ALT')
+
+		''' compute thermo '''
+		hgt=data.index.values
+		Tc=data['AIR_TEMP']
+		Tk=Tc+273.15
+		press=data['AIR_PRESS']
+		dewp=data['DEW_POINT']
+		Rh=tm.relative_humidity(C=Tc,Dewp=dewp)
+		Sat_mixr=tm.sat_mix_ratio(C=Tc, hPa=press)
+		Mr=Rh*Sat_mixr/100.		
+		theta = tm.theta2(K=Tk, hPa=press,mixing_ratio=Mr)	 
+		thetaeq = tm.theta_equiv2(K=Tk, hPa=press, relh=Rh, mixing_ratio=Mr)	
+		data['theta'] = theta.values
+		data['thetaeq'] = thetaeq.values
+		bvf_dry = tm.bv_freq_dry(theta=theta, agl_m=hgt, depth_m=100,centered=True) 
+		bvf_moist = tm.bv_freq_moist(K=Tk, hPa=press, mixing_ratio=Mr,
+										agl_m=hgt, depth_m=100,centered=True)
+
+		data = pd.merge(data,bvf_dry,left_index=True,right_index=True,how='outer')
+		data = pd.merge(data,bvf_moist,left_index=True,right_index=True,how='outer')
+		data.bvf_dry.interpolate(method='linear',inplace=True)
+		data.bvf_moist.interpolate(method='linear',inplace=True)
+
+		return data
+	else:
+		hgt=data['PRES_ALT']
+		Tc=data['AIR_TEMP']
+		Tk=Tc+273.15
+		press=data['AIR_PRESS']
+		dewp=data['DEW_POINT']
+		Rh=tm.relative_humidity(C=Tc,Dewp=dewp)
+		Sat_mixr=tm.sat_mix_ratio(C=Tc, hPa=press)
+		Mr=Rh*Sat_mixr/100.		
+		theta = tm.theta2(K=Tk, hPa=press,mixing_ratio=Mr)	 
+		thetaeq = tm.theta_equiv2(K=Tk, hPa=press, relh=Rh, mixing_ratio=Mr)	
+		data['theta'] = theta.values
+		data['thetaeq'] = thetaeq.values
+		data['bvf_dry']=np.nan
+		data['bvf_moist']=np.nan
+
+		return data	
 
 
 """ 
