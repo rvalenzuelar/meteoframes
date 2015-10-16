@@ -34,7 +34,20 @@ def parse_sounding(file_sound):
 	''' replace nan values '''
 	nan_value = -32768.00
 	sounding = sounding.applymap(lambda x: np.nan if x == nan_value else x)
+
+	''' QC soundings that include descening trayectories;
+		criteria is 3 consecutive values descening
+	'''
+	sign = np.sign(np.diff(sounding['Height']))
+	rep = find_repeats(sign.tolist(),-1,3)
+	try:
+		lastgood = np.where(rep)[0][0]-1
+		sounding = sounding.ix[0:lastgood]
+	except IndexError:
+		''' all good'''
+		pass
 	
+
 	''' set index '''
 	sounding = sounding.set_index('Height')
 
@@ -70,10 +83,17 @@ def parse_sounding(file_sound):
 
 	sounding = pd.merge(sounding,bvf_dry,left_index=True,right_index=True,how='outer')
 	sounding = pd.merge(sounding,bvf_moist,left_index=True,right_index=True,how='outer')
+
+	''' interpolate between layer-averaged values '''
 	sounding.bvf_dry.interpolate(method='linear',inplace=True)
 	sounding.bvf_moist.interpolate(method='linear',inplace=True)
 	sounding.loc[sounding.MR.isnull(),'bvf_dry']=np.nan
 	sounding.loc[sounding.MR.isnull(),'bvf_moist']=np.nan
+
+	''' 	NOTE: if sounding hgt jumps from 12 to 53m then 12m
+		bvf values are NaN since there are no data between 12
+		and 53m to calculate a layer-based value. 
+	'''
 	
 	return sounding
 
@@ -216,6 +236,7 @@ def parse_acft_sounding(flight_level_file, req_ini, req_end, return_interp):
 
 	x=data['PRES_ALT'].values
 	xnew=np.linspace(min(x),max(x), x.size)
+
 	if x[0]>x[-1]:
 		descening = True
 		data = data.iloc[::-1]
@@ -227,7 +248,6 @@ def parse_acft_sounding(flight_level_file, req_ini, req_end, return_interp):
 		data2=data.drop_duplicates(subset='PRES_ALT')
 		x2=data2['PRES_ALT'].values
 
-
 		''' interpolate each field '''
 		for n in ['AIR_PRESS', 'AIR_TEMP','DEW_POINT','WIND_SPD','WIND_DIR']:
 			y=data2[n].values
@@ -236,6 +256,8 @@ def parse_acft_sounding(flight_level_file, req_ini, req_end, return_interp):
 			rbf=Rbf(x2,y,smooth=1.0)
 			ynew = rbf(xnew)
 			data[n] = ynew
+
+
 
 		'''' update values '''
 		data['PRES_ALT'] = xnew
@@ -265,7 +287,11 @@ def parse_acft_sounding(flight_level_file, req_ini, req_end, return_interp):
 		data.bvf_dry.interpolate(method='linear',inplace=True)
 		data.bvf_moist.interpolate(method='linear',inplace=True)
 
-		return data
+		''' drop last incorrect decreasing (increasing) altitude (pressure) value '''
+		data2 = data.ix[:xnew[-2]]
+
+		''' return dataframe '''
+		return data2
 	else:
 		hgt=data['PRES_ALT']
 		Tc=data['AIR_TEMP']
@@ -316,3 +342,17 @@ def nan_fraction(series):
 	nans = float(series.isnull().sum())
 	total = float(len(series.index))
 	return (nans/total)*100		
+
+def find_repeats(L, required_number, num_repeats, stop_after_match=False):
+	''' John La Rooy solution in stackoverflow '''
+	idx = 0
+	while idx < len(L):
+		if [required_number]*num_repeats == L[idx:idx+num_repeats]:
+			L[idx:idx+num_repeats] = [True]*num_repeats
+			idx += num_repeats
+			if stop_after_match:
+				break
+		else:
+			L[idx]=False
+			idx += 1
+	return L
