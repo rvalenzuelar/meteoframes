@@ -99,23 +99,46 @@ def parse_sounding(file_sound):
 
 def parse_surface(file_met,index_field,name_field,locelevation):
 
-	dates_col=[0,1,2]
-	dates_fmt='%Y %j %H%M'
+	from scipy import stats
+
+	''' Assumptions:
+		- Each file is a 24h period observation 
+		- Frequency of observation is constant
+	'''
+
 
 	''' read the csv file '''
-	dframe = pd.read_csv(file_met,header=None)
+	raw_dframe = pd.read_csv(file_met,header=None)
 
 	''' parse date columns into a single date col '''
-	raw_dates=dframe.ix[:,dates_col]
+	dates_col=[0,1,2]
+	raw_dates=raw_dframe.ix[:,dates_col]
 	raw_dates.columns=['Y','j','HHMM']
 	raw_dates['HHMM'] = raw_dates['HHMM'].apply(lambda x:'{0:0>4}'.format(x))
 	raw_dates=raw_dates.apply(lambda x: '%s %s %s' % (x['Y'],x['j'],x['HHMM']), axis=1)
+	dates_fmt='%Y %j %H%M'	
 	dates=raw_dates.apply(lambda x: datetime.strptime(x, dates_fmt))
 
 	''' make meteo df, assign datetime index, and name columns '''
-	meteo=dframe.ix[:,index_field]
+	meteo=raw_dframe.ix[:,index_field]
 	meteo.index=dates
 	meteo.columns=name_field
+
+	''' create a dataframe with regular and continuous 24h period time index 
+		(this works as a QC for time gaps)
+	'''
+	nano=1000000000
+	time_diff=np.diff(meteo.index)
+	sample_freq=(stats.mode(time_diff)[0][0]/nano).astype(int) # [seconds]
+	fidx = meteo.index[0] # (start date for dataframe)
+	fidx_str = pd.to_datetime(fidx.year*10000 + fidx.month*100 + fidx.day, format='%Y%m%d')
+	periods = (24*60*60)/sample_freq
+	ts = pd.date_range(fidx_str, periods=periods, freq=str(sample_freq)+'s')
+	nanarray=np.empty((periods,1))
+	nanarray[:]=np.nan
+	df=pd.DataFrame(nanarray, index=ts)
+	meteo = df.join(meteo, how='outer')
+	meteo.drop(0,axis=1,inplace=True)
 
 	''' make field with hourly acum precip '''
 	hour=pd.TimeGrouper('H')
