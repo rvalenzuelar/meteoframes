@@ -17,7 +17,7 @@ import os
 from netCDF4 import Dataset
 from scipy.interpolate import UnivariateSpline
 from scipy.interpolate import Rbf
-
+from os import path
 
 def parse_sounding(file_sound):
 
@@ -172,10 +172,21 @@ def parse_windprof(windprof_file,mode):
 	""" NOAA HHw files are one per hour 
 	"""
 
+	' fix for files with coarse resolution starting at row 61'
+	if path.basename(windprof_file)[3:5] in ['98']:
+		skfoot=42
+		skrow=51
+	elif path.basename(windprof_file)[3:5] in ['03']:
+		skfoot=51
+		skrow=60
+	else:
+		skfoot=50
+		skrow=59
+
 	if mode == 'fine':
-		raw = pd.read_table(windprof_file,skiprows=10,skipfooter=50,engine='python',delimiter='\s*')
+		raw = pd.read_table(windprof_file,skiprows=10,skipfooter=skfoot,engine='python',delimiter='\s*')
 	elif mode == 'coarse':
-		raw = pd.read_table(windprof_file,skiprows=59,skipfooter=1,engine='python',delimiter='\s*')
+		raw = pd.read_table(windprof_file,skiprows=skrow,skipfooter=1,engine='python',delimiter='\s*')
 
 	''' get timestamp '''
 	raw_timestamp = pd.read_table(windprof_file,skiprows=4,skipfooter=94,engine='python')
