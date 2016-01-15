@@ -36,7 +36,7 @@ def parse_sounding(file_sound):
 	sounding = sounding.applymap(lambda x: np.nan if x == nan_value else x)
 
 	''' QC soundings that include descening trayectories;
-		criteria is 3 consecutive values descening
+		criteria is 3 consecutive values descending
 	'''
 	sign = np.sign(np.diff(sounding['Height']))
 	rep = find_repeats(sign.tolist(),-1,3)
@@ -47,7 +47,6 @@ def parse_sounding(file_sound):
 		''' all good'''
 		pass
 	
-
 	''' set index '''
 	sounding = sounding.set_index('Height')
 
@@ -97,15 +96,110 @@ def parse_sounding(file_sound):
 	
 	return sounding
 
-def parse_surface(file_met,index_field,name_field,locelevation):
+def parse_sounding2(file_sound):
+
+	''' 
+	This version make a resample of vertical gates 
+	and uses make_layer2 in bvf calculations 
+	(Thermodyn module)
+	'''
+
+	col_names=get_var_names(file_sound)
+	col_units=get_var_units(file_sound)
+
+	''' read tabular file '''
+	raw_sounding = pd.read_table(file_sound,skiprows=36,header=None)
+	raw_sounding.drop(19 , axis=1, inplace=True)	
+	raw_sounding.columns=col_names
+	sounding=raw_sounding[['Height','TE','TD','RH','u','v','P','MR','DD']]
+	sounding.units={'Height':'m','TE':'K', 'TD':'K', 'RH':'%' ,'u':'m s-1','v':'m s-1','P':'hPa','MR':'g kg-1'}
+
+	''' replace nan values '''
+	nan_value = -32768.00
+	sounding = sounding.applymap(lambda x: np.nan if x == nan_value else x)
+
+	''' QC soundings that include descening trayectories;
+		criteria is 3 consecutive values descending
+	'''
+	sign = np.sign(np.diff(sounding['Height']))
+	rep = find_repeats(sign.tolist(),-1,3)
+	try:
+		lastgood = np.where(rep)[0][0]-1
+		sounding = sounding.ix[0:lastgood]
+	except IndexError:
+		''' all good'''
+		pass
+	
+	''' resample to constant height values '''
+	resamp = 2 # [m]
+	sounding = sounding.set_index('Height')
+	hgt=sounding.index.values[-1]
+	resample=np.arange(10,hgt,resamp)
+	soundres=sounding.loc[resample]
+	soundres.iloc[0]=sounding.iloc[0] # copy first value
+	soundres.iloc[-1]=sounding.iloc[-1] # copy last value
+	soundres.interpolate(method='linear', inplace=True,limit=80,limit_direction='backward')
+	soundres=soundres.reset_index().drop_duplicates(subset='Height', keep='first')
+	soundres=soundres.set_index('Height')
+
+	''' QC  '''
+	soundres.RH = soundres.RH.apply(lambda x: 100 if x>100 else x)
+	rh_nans = nan_fraction(soundres.RH) # [%]
+	td_nans = nan_fraction(soundres.TD) # [%]
+	mr_nans = nan_fraction(soundres.MR) # [%]
+	if rh_nans<5. and td_nans>50. and mr_nans>50.:
+		sat_mixr = tm.sat_mix_ratio(K= soundres.TE,hPa=soundres.P)
+		mixr=(soundres.RH/100.)*sat_mixr*1000
+		soundres.loc[:,'MR']=mixr #[g kg-1]
+
+	''' add potential temperature '''
+	theta = tm.theta2(K=soundres.TE, hPa=soundres.P,mixing_ratio=soundres.MR/1000)	
+	thetaeq = tm.theta_equiv2(K=soundres.TE, hPa=soundres.P,
+										relh=soundres.RH,mixing_ratio=soundres.MR/1000)	
+	soundres.loc[:,'theta'] = pd.Series(theta, index=soundres.index)	
+	soundres.loc[:,'thetaeq'] = pd.Series(thetaeq,index=soundres.index)
+
+	''' add Brunt-Vaisala frequency '''
+	hgt=soundres.index.values
+	depth=100 # [m]
+	bvf_dry= tm.bv_freq_dry(theta=soundres.theta, agl_m=hgt, depth_m=depth)
+	bvf_moist= tm.bv_freq_moist(K=soundres.TE, hPa=soundres.P, mixing_ratio=soundres.MR/1000,
+										agl_m=hgt, depth_m=depth)
+
+	soundres = pd.merge(soundres,bvf_dry,left_index=True,right_index=True,how='outer')
+	soundres = pd.merge(soundres,bvf_moist,left_index=True,right_index=True,how='outer')
+
+	''' interpolate between layer-averaged values '''
+	soundres.bvf_dry.interpolate(method='linear',inplace=True)
+	soundres.bvf_moist.interpolate(method='linear',inplace=True)
+
+	return soundres
+
+def parse_surface(file_met,index_field=None,name_field=None,locelevation=None):
 
 	from scipy import stats
 
-	''' Assumptions:
+	''' Output dataframe assumes:
 		- Each file is a 24h period observation 
 		- Frequency of observation is constant
 	'''
 
+	casename = file_met.split('/')[-2]
+	station_id =file_met.split('/')[-1][:3]
+	usr_case=str(int(casename[-2:]))
+
+	if usr_case in ['1','2']:
+		index_field={'bby':[3,4,10,5,6,11,13],'czc':[3,4,10,5,6,11,13]}
+	elif usr_case in ['3','4','5','6','7']: 
+		index_field={'bby':[3,5,8,10,12,17,26],'czc':[3,4,5,6,8,13,22]}
+	else:
+		index_field={'bby':[3,4,5,6,8,13,15],'czc':[3,4,5,6,8,13,15]}
+
+	elev={'bby':15,'czc':462}
+	name_field=['press','temp','rh','wspd','wdir','precip','mixr']
+
+	index_field=index_field[station_id]
+	locelevation=elev[station_id]
 
 	''' read the csv file '''
 	raw_dframe = pd.read_csv(file_met,header=None)
