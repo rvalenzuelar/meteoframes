@@ -267,10 +267,11 @@ def parse_windprof(windprof_file,mode):
 	"""
 
 	' fix for files with coarse resolution starting at row 61'
-	if path.basename(windprof_file)[3:5] in ['98']:
-		skfoot=42
+	year=path.basename(windprof_file)[3:5]
+	if year in ['98']:
+		skfoot=50
 		skrow=51
-	elif path.basename(windprof_file)[3:5] in ['03']:
+	elif year in ['03']:
 		skfoot=51
 		skrow=60
 	else:
