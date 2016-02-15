@@ -189,13 +189,17 @@ def parse_surface(file_met,index_field=None,name_field=None,locelevation=None):
 	usr_case=str(int(casename[-2:]))
 
 	if usr_case in ['1','2']:
-		index_field={'bby':[3,4,10,5,6,11,13],'czc':[3,4,10,5,6,11,13]}
+		index_field={	'bby':[3,4,10,5,6,11,13],
+						'czc':[3,4,10,5,6,11,13]}
 	elif usr_case in ['3','4','5','6','7']: 
-		index_field={'bby':[3,5,8,10,12,17,26],'czc':[3,4,5,6,8,13,22]}
+		index_field={	'bby':[3,5,8,10,12,17,26],
+						'czc':[3,4,5,6,8,13,22]}
 	else:
-		index_field={'bby':[3,4,5,6,8,13,15],'czc':[3,4,5,6,8,13,15]}
+		index_field={	'bby':[3,4,5,6,8,13,15],
+						'czc':[3,4,5,6,8,13,15],
+						'frs':[3,4,5,6,8,13,15]}
 
-	elev={'bby':15,'czc':462}
+	elev={'bby':15,'czc':462, 'frs':45}
 	name_field=['press','temp','rh','wspd','wdir','precip','mixr']
 
 	index_field=index_field[station_id]
