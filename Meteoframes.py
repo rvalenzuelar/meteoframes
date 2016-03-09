@@ -330,7 +330,7 @@ def parse_windprof(windprof_file, mode):
 
 
 def parse_rass(rass_file):
-    ''' input file is cns rev 4.1'''
+    ''' input file is cns rev 4.1 and rev 5.0'''
     from datetime import datetime
 
     with open(rass_file) as f:
@@ -340,23 +340,21 @@ def parse_rass(rass_file):
     t = []
     tc = []
     timestamp = []
+    is_chunk = False
     first_chunk = True
-    buff = False
     for line in lines:
-        beg = line[:-2].split()
-        init_chunk = len(beg) <= 3
-        date_line = len(line) == 25
-        if init_chunk:
-            buff = False
-        else:
-            if beg[0] == 'HT':
-                buff = True
-                continue
+        split = line[:-2].split()
+        is_chunk = (len(split) == 10)
+        date_line = (len(split) == 7)
 
-        if buff:
-            hgt.append(float(line[:-2].split()[0]))
-            t.append(float(line[:-2].split()[1]))
-            tc.append(float(line[:-2].split()[2]))
+        if is_chunk:
+            try:
+                hgt.append(float(line[:-2].split()[0]))
+                t.append(float(line[:-2].split()[1]))
+                tc.append(float(line[:-2].split()[2]))
+            except ValueError:
+                'found header (rev5.0 files)'
+                continue
         elif len(hgt) > 0:
             if first_chunk:
                 HGT = np.array(hgt)
@@ -376,9 +374,32 @@ def parse_rass(rass_file):
             timestamp.append(ts)
 
     nan_value = 9999.
-    T[T == nan_value] = np.nan
-    Tc[Tc == nan_value] = np.nan
-    return T.T, Tc.T, HGT.T, timestamp
+
+    if np.mod(len(timestamp), 24) > 0:
+        ''' there is one or more time gaps '''
+        print('time gaps')
+        hg, ti = T.shape
+        newDim = (24, hg)
+        newT = np.zeros(newDim) + nan_value
+        newTc = np.zeros(newDim) + nan_value
+        newHGT = np.zeros(newDim) + nan_value
+        newTs = [nan_value]*23
+
+        for i in range(ti):
+            h = timestamp[i].hour
+            newT[h, :] = T[i, :]
+            newTc[h, :] = Tc[i, :]
+            newHGT[h, :] = HGT[i, :]
+            newTs.insert(h, timestamp[i])
+
+        newT[newT == nan_value] = np.nan
+        newTc[newTc == nan_value] = np.nan
+        newHGT[newHGT == nan_value] = np.nan
+        return newT.T, newTc.T, newHGT.T, newTs[:24]
+    else:
+        T[T == nan_value] = np.nan
+        Tc[Tc == nan_value] = np.nan
+        return T.T, Tc.T, HGT.T, timestamp
 
 
 def parse_buoy(buoy_file, start=None, end=None):
