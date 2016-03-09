@@ -331,7 +331,7 @@ def parse_windprof(windprof_file, mode):
 
 def parse_rass(rass_file):
     ''' input file is cns rev 4.1 and rev 5.0'''
-    from datetime import datetime
+    from datetime import datetime, timedelta
 
     with open(rass_file) as f:
         lines = f.readlines()
@@ -374,10 +374,20 @@ def parse_rass(rass_file):
             timestamp.append(ts)
 
     nan_value = 9999.
+    T[T == nan_value] = np.nan
+    Tc[Tc == nan_value] = np.nan
+
+    ''' QC outliers '''
+    mu = np.nanmean(T)
+    sigma = np.nanstd(T)
+    bot = mu-3*sigma
+    top = mu+3*sigma
+    T[T <= bot] = np.nan
+    T[T >= top] = np.nan
 
     if np.mod(len(timestamp), 24) > 0:
-        ''' there is one or more time gaps '''
-        print('time gaps')
+        ''' there is one or more time gaps
+        assuming 24 hr file '''
         hg, ti = T.shape
         newDim = (24, hg)
         newT = np.zeros(newDim) + nan_value
@@ -395,18 +405,26 @@ def parse_rass(rass_file):
         newT[newT == nan_value] = np.nan
         newTc[newTc == nan_value] = np.nan
         newHGT[newHGT == nan_value] = np.nan
-        return newT.T, newTc.T, newHGT.T, newTs[:24]
+        newTs = np.array(newTs[:24])
+        ts_nan = np.where(newTs == nan_value)[0]
+        ''' this works only for one gap (1 or more hrs)'''
+        filldates = [
+            newTs[ts_nan[0]-1]+timedelta(hours=n+1)
+            for n in range(len(ts_nan))]
+        newTs[ts_nan] = filldates
+        print('time gap resolved (check if there is more than 1 gap)')
+        return newT.T, newTc.T, newHGT.T, newTs
     else:
-        T[T == nan_value] = np.nan
-        Tc[Tc == nan_value] = np.nan
+        # T[T == nan_value] = np.nan
+        # Tc[Tc == nan_value] = np.nan
         return T.T, Tc.T, HGT.T, timestamp
 
 
 def parse_buoy(buoy_file, start=None, end=None):
 
-    obs_per_hour = 6  # obs every 10 minutes
-    hrs_per_day = 24
-    ndays = 23
+    # obs_per_hour = 6  # obs every 10 minutes
+    # hrs_per_day = 24
+    # ndays = 23
     raw = pd.read_table(buoy_file,
                         parse_dates=[[0, 1, 2, 3, 4]],
                         engine='python',
@@ -431,7 +449,8 @@ def parse_mesowest_excel(mesowest_file):
     filename = os.path.basename(mesowest_file)
     station_id = 'ID = ' + filename[:4]
     raw = pd.read_excel(mesowest_file, skip_footer=3)
-    # raw['Datetime'] = pd.to_datetime(raw[station_id],format='%m-%d-%Y %H:%M GMT')
+    # raw['Datetime'] = pd.to_datetime(raw[station_id],
+    # format='%m-%d-%Y %H:%M GMT')
     raw.index = pd.to_datetime(raw[station_id], format='%m-%d-%Y %H:%M GMT')
     # meso = raw.set_index(raw['Datetime'])
     # meso.drop(station_id, axis=1, inplace=True)
