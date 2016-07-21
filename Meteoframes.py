@@ -165,8 +165,7 @@ def parse_sounding2(file_sound):
         soundres.loc[:, 'MR'] = mixr  # [g kg-1]
 
     ''' add potential temperature '''
-    theta = tm.theta2(
-        K=soundres.TE, hPa=soundres.P, mixing_ratio=soundres.MR/1000)
+    theta = tm.theta2(K=soundres.TE, hPa=soundres.P, mixing_ratio=soundres.MR/1000)
     thetaeq = tm.theta_equiv2(K=soundres.TE, hPa=soundres.P,
                               relh=soundres.RH, mixing_ratio=soundres.MR/1000)
     soundres.loc[:, 'theta'] = pd.Series(theta, index=soundres.index)
