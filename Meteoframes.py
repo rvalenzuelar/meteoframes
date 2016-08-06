@@ -186,8 +186,8 @@ def parse_sounding2(file_sound):
         soundres, bvf_moist, left_index=True, right_index=True, how='outer')
 
     ''' interpolate between layer-averaged values '''
-    soundres.bvf_dry.interpolate(method='linear', inplace=True)
-    soundres.bvf_moist.interpolate(method='linear', inplace=True)
+    soundres.bvf_dry.interpolate(method='cubic', inplace=True)
+    soundres.bvf_moist.interpolate(method='cubic', inplace=True)
 
     return soundres
 
