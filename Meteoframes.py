@@ -139,7 +139,7 @@ def parse_sounding2(file_sound):
     except IndexError:
         ''' all good'''
         pass
-
+#    print sounding
     ''' resample to constant height values '''
     resamp = 2  # [m]
     sounding = sounding.set_index('Height')
