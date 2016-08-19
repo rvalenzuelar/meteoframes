@@ -192,12 +192,122 @@ def parse_sounding2(file_sound):
     return soundres
 
 
-def parse_surface(file_met, index_field=None,
+def parse_surface(file_met):
+
+    file_extension = file_met.split('/')[-1][-3:]
+
+    if file_extension == 'met':
+        meteo =  parse_surface_met(file_met)
+
+    else:
+        meteo = parse_surface_surf(file_met)
+
+    return meteo
+
+def parse_surface_surf(file_met):
+
+    from scipy import stats
+
+    ''' 
+        Process surface meteorological files 
+        with .surf extension downloaded from
+        http://www.esrl.noaa.gov/psd/data/obs/datadisplay/
+        
+        File does not have mixing ratio.
+
+        Output dataframe assumes:
+        - Each file is a 24h period observation
+        - Frequency of observation is constant
+    '''
+
+    station_id = file_met.split('/')[-1][:3]
+
+    index_field = {'bby': (4, 5, 6, 8, 9, 14)}
+    index_field = index_field[station_id]
+
+    name_field = ['press', 'temp', 'rh', 'wspd', 'wdir', 'precip']
+
+    elev = {'bby': 15, 'czc': 462, 'frs': 45}
+    locelevation = elev[station_id]
+
+    ''' read the csv file '''
+    raw_dframe = pd.read_csv(file_met, header=None)
+
+    ''' parse date columns into a single date col '''
+    dates_col = [1, 2, 3]
+    raw_dates = raw_dframe.ix[:, dates_col]
+    raw_dates.columns = ['Y', 'j', 'HHMM']
+    raw_dates['HHMM'] = raw_dates['HHMM'].apply(lambda x: '{0:0>4}'.format(x))
+    raw_dates = raw_dates.apply(
+                                lambda x: '%s %s %s' % (x['Y'], x['j'], x['HHMM']),
+                                axis=1)
+    dates_fmt = '%Y %j %H%M'
+    dates = raw_dates.apply(lambda x: datetime.strptime(x, dates_fmt))
+
+    ''' make meteo df, assign datetime index, and name columns '''
+    meteo = raw_dframe.ix[:, index_field]
+    meteo.index = dates
+    meteo.columns = name_field
+
+    ''' create a dataframe with regular and continuous 24h period time index
+        (this works as a QC for time gaps)
+    '''
+    nano = 1000000000
+    time_diff = np.diff(meteo.index)
+    sample_freq = (stats.mode(time_diff)[0][0]/nano).astype(int)  # [seconds]
+    fidx = meteo.index[0]  # (start date for dataframe)
+    fidx_str = pd.to_datetime(
+        fidx.year*10000 + fidx.month*100 + fidx.day, format='%Y%m%d')
+    periods = (24*60*60)/sample_freq
+    ts = pd.date_range(fidx_str, periods=periods, freq=str(sample_freq)+'s')
+    nanarray = np.empty((periods, 1))
+    nanarray[:] = np.nan
+    df = pd.DataFrame(nanarray, index=ts)
+    meteo = df.join(meteo, how='outer')
+    meteo.drop(0, axis=1, inplace=True)
+
+    ''' correct pressure by offset '''
+    meteo.press = meteo.press + 400
+
+    ''' make field with hourly acum precip '''
+    hour = pd.TimeGrouper('H')
+    preciph = meteo.precip.groupby(hour).sum()
+    meteo = meteo.join(preciph, how='outer', rsuffix='h')
+
+    ''' add thermodynamics '''
+    theta = tm.theta1(C=meteo.temp, hPa=meteo.press)
+    thetaeq = tm.theta_equiv1(C=meteo.temp, hPa=meteo.press)
+    meteo.loc[:, 'theta'] = pd.Series(theta, index=meteo.index)
+    meteo.loc[:, 'thetaeq'] = pd.Series(thetaeq, index=meteo.index)
+
+    ''' add sea level pressure '''
+    # Tv = tm.virtual_temperature(C=meteo.temp, mixing_ratio=meteo.mixr/1000.)
+    # slp = tm.sea_level_press(K=Tv+273.15, Pa=meteo.press*100, m=locelevation)
+    # meteo.loc[:, 'sea_levp'] = slp
+
+    ''' assign metadata (prototype, not really used) '''
+    units = {'press': 'mb', 'temp': 'C', 'rh': '%', 'wspd': 'm s-1',
+             'wdir': 'deg', 'precip': 'mm'}
+    agl = {'press': 'NaN', 'temp': '10 m', 'rh': '10 m',
+           'wspd': 'NaN', 'wdir': 'NaN', 'precip': 'NaN'}
+    for n in name_field:
+        meteo[n].units = units[n]
+        meteo[n].agl = agl[n]
+        meteo[n].nan = -9999.999
+        meteo[n].sampling_freq = '2 minute'
+
+    return meteo
+
+def parse_surface_met(file_met, index_field=None,
                   name_field=None, locelevation=None):
 
     from scipy import stats
 
-    ''' Output dataframe assumes:
+    ''' 
+        Process surface meteorological files 
+        with .met extension
+
+        Output dataframe assumes:
         - Each file is a 24h period observation
         - Frequency of observation is constant
     '''
@@ -283,7 +393,7 @@ def parse_surface(file_met, index_field=None,
         meteo[n].units = units[n]
         meteo[n].agl = agl[n]
         meteo[n].nan = -9999.999
-        meteo[n].sampling_freq = '1 minute'
+        meteo[n].sampling_freq = '2 minute'
 
     return meteo
 
